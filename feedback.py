@@ -4,8 +4,22 @@ from scipy import signal as sig
 from math import pi, exp, cos, sin, log, sqrt
 from control import margin
 from control import tf
+"""
+@Author Brandon Vetter
+@Date September 30th, 2024
+
+This file has some helper functions used for feedback systems.
+
+This was made for the ECE 450 - signals and systems 2 class
+for the Unversity of Idaho.
+"""
+
+
 
 class wz_gt_wp(Exception):
+    """
+    Execption if wz is > wp
+    """
     def __init__(self, value):
         self.value = value
     def __str__(self):
@@ -13,6 +27,9 @@ class wz_gt_wp(Exception):
     
     
 class wp_gt_wz(Exception):
+    """
+    Execption if wz is < wp
+    """
     def __init__(self, value):
         self.value = value
     def __str__(self):
@@ -20,20 +37,34 @@ class wp_gt_wz(Exception):
 
 
 class frac:
+    """
+    Class for storing faction equations for use
+    by the functions in the program
+    """
     def __init__(self, num, den, k=1):
+        """
+        num - numberator, array
+        den - denominator, array
+        k - is the gain, floating point
+
+        numerator and denominator do not need to be equal size,
+        if not, they will be made equal by adding 0s to one
+        """
+
+        # apply k value to numerator
         for i in range(len(num)):
             num[i] *= k
         self.num = num
         self.den = den
         self.k = k
         
+        # make numerator and denominator equal
         while len(num) != len(den):
             if len(num) < len(den):
                 self.num.insert(0,0)
             elif len(num) > len(den):
                 self.den.insert(0,0)
-        
-        
+          
     def print(self):
         num_str = ""
         den_str = ""
@@ -42,14 +73,14 @@ class frac:
                 if (len(self.num)-1) - i == 1:
                     num_str += f"{self.num[i]}s + " 
                 elif (len(self.num)-1) - i != 0:
-                    num_str += f"{self.num[i]}s^{i - len(self.num) + 1} + "
+                    num_str += f"{self.num[i]}s^{len(self.num) - i + 1} + "
                 else:
                     num_str += f"{self.num[i]} + "
             if self.den[i] != 0:
                 if (len(self.num)-1) - i == 1:
                     den_str += f"{self.den[i]}s + "
                 elif (len(self.num)-1) - i != 0:
-                    den_str += f"{self.den[i]}s^{i - len(self.num) + 1} + "
+                    den_str += f"{self.den[i]}s^{len(self.num) - i + 1} + "
                     
                 else:
                     den_str += f"{self.den[i]} + "
