@@ -114,12 +114,17 @@ def phase_lead_compensation(wm, sigm):
     if wz >= wp:
         raise wz_gt_wp("wz can not be greater then wp for a phase lead filter")
     lead_filter = frac([1, float(wz)], [1, float(wp)], k=float(wp/wz))
+    print(f"phase wp: {wp}")
+    print(f"phase wz: {wz}")
+    print(f"phase alf: {alf}")
     return lead_filter
 
 def phase_lag_compensation(wz, wp):
     if wp >= wz:
         raise wp_gt_wz("wp can not be greater then wz for a phase lag filter")
     lead_filter = frac([1, float(wz)], [1, float(wp)])
+    print(f"phase wp: {wp}")
+    print(f"phase wz: {wz}")
     return lead_filter
 
 def db_to_freq(Hs, search_val, bode_start = 1, bode_stop = 1E3, dt=.1, fuzz = .1):
