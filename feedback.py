@@ -65,6 +65,11 @@ class frac:
             elif len(num) > len(den):
                 self.den.insert(0,0)
           
+    def set_k(self,k):
+        # apply k value to numerator
+        for i in range(len(self.num)):
+            self.num[i] *= k
+        self.k = k
     def print(self):
         num_str = ""
         den_str = ""
@@ -111,18 +116,207 @@ def phase_lead_compensation(wm, sigm):
     lead_filter = frac([1, float(wz)], [1, float(wp)], k=float(wp/wz))
     return lead_filter
 
-def phase_lag_compensation(wm, sigm):
-    alf = (1+ np.sin(np.deg2rad(sigm)))/(1-np.sin(np.deg2rad(sigm)))
-    wp = np.sqrt(alf)*wm
-    wz = wm/np.sqrt(alf)
-    if wp >= wp:
-        raise wp_gt_wz("wp can not be greater then wp for a phase lag filter")
+def phase_lag_compensation(wz, wp):
+    if wp >= wz:
+        raise wp_gt_wz("wp can not be greater then wz for a phase lag filter")
     lead_filter = frac([1, float(wz)], [1, float(wp)])
     return lead_filter
+
+def db_to_freq(Hs, search_val, bode_start = 1, bode_stop = 1E3, dt=.1, fuzz = .1):
+    w = np.arange(bode_start, bode_stop+dt, dt)
+    system = sig.lti(Hs.num, Hs.den)
+    w, Hmag, Hphase = sig.bode(system, w)
+    possible_values = []
+    index = 0
+    in_range = False
+    for value in Hmag:
+        if search_val+fuzz >= value and search_val-fuzz <= value: 
+            if in_range == False:
+                possible_values.append([])
+            in_range = True
+            possible_values[-1].append((value, w[index]))
+        else:
+            in_range = False
+        index += 1
+
+    ret_vals = []
+    for arr in possible_values:
+        ret_val = arr[0]
+        for val, w in arr:
+            ret_val_dist = np.abs(ret_val[0] - search_val)
+            cur_val_dist = np.abs(val - search_val)
+            if ret_val_dist > cur_val_dist:
+                ret_val = (val, w)
+        ret_vals.append(ret_val)
+
+    return ret_vals
+
+def deg_to_freq(Hs, search_val, bode_start = 1, bode_stop = 1E3, dt=.1, fuzz = .1):
+    w = np.arange(bode_start, bode_stop+dt, dt)
+    system = sig.lti(Hs.num, Hs.den)
+    w, Hmag, Hphase = sig.bode(system, w)
+    possible_values = []
+    index = 0
+    in_range = False
+    for value in Hphase:
+        if search_val+fuzz >= value and search_val-fuzz <= value: 
+            if in_range == False:
+                possible_values.append([])
+            in_range = True
+            possible_values[-1].append((value, w[index]))
+        else:
+            in_range = False
+        index += 1
+
+    ret_vals = []
+    for arr in possible_values:
+        ret_val = arr[0]
+        for val, w in arr:
+            ret_val_dist = np.abs(ret_val[0] - search_val)
+            cur_val_dist = np.abs(val - search_val)
+            if ret_val_dist > cur_val_dist:
+                ret_val = (val, w)
+        ret_vals.append(ret_val)
+
+    return ret_vals
+
+def _get_y_from_w(w, H, value):
+
+    start_ind = 0
+    end_ind = len(w) - 1
+    mid = int((end_ind - start_ind)/2)
+
+    while w[mid] != value and (end_ind - start_ind > 1):
+        if w[mid] < value:
+            start_ind = mid
+        else:
+            end_ind = mid
+        mid = int(start_ind + (end_ind - start_ind)/2)
     
-def ds_bode(Hs, save=True, disable_text = False, **kargs):
+    return (H[mid], w[mid])
+
+def get_db_from_w(Hs, search_val, bode_start = 1, bode_stop = 1E3, dt=.1):
+    w, Hmag, Hphase = make_bode(Hs, bode_start, bode_stop, dt)
+    return _get_y_from_w(w, Hmag, search_val)
+
+def get_phase_from_w(Hs, search_val, bode_start = 1, bode_stop = 1E3, dt=.1):
+    w, Hmag, Hphase = make_bode(Hs, bode_start, bode_stop, dt)
+    return _get_y_from_w(w, Hphase, search_val)
+
+def get_margins(Hs,bode_start = 1, bode_stop = 1E3, dt=.1):
+    w = np.arange(bode_start, bode_stop+dt, dt)
+    system = sig.lti(Hs.num, Hs.den)
+    w, Hmag, Hphase = sig.bode(system, w)
+    gm, pm, wg, wp = margin(Hmag, Hphase, w)
+    print(f"gm: {gm}")
+    print(f"pm: {pm}")
+    print(f"wg: {wg}")
+    print(f"wp: {wp}")
+    return gm, pm, wg, wp
+
+def make_bode(Hs,bode_start = 1, bode_stop = 1E3, dt=.1):
+    w = np.arange(bode_start, bode_stop+dt, dt)
+    system = sig.lti(Hs.num, Hs.den)
+    w, Hmag, Hphase = sig.bode(system, w)
+    return w, Hmag, Hphase
+
+def make_errors(Hs, error_start = 0, error_end = 1, error_dt = .01):
+    """
+    takes Hs, error_start, error_end, and error_dt as input
+    returns (step, y1, errS), (ramp, y2, errR), (parabola, y3, errP), TT
+    """
+    TT = np.arange(error_start, error_end+error_dt, error_dt)
+    NN = len(TT)
+    step = np.zeros(NN)
+    ramp = np.zeros(NN)
+    parabola = np.zeros(NN)
+    errS = np.zeros(NN)
+    errR = np.zeros(NN)
+    errP = np.zeros(NN)
+
+    for i in range(NN):
+        step[i] = 1.0
+        ramp[i] = (error_dt*i)
+        parabola[i] = (error_dt*i)**(2)
+
+    denCL = np.add(Hs.num, Hs.den)
+
+    t1, y1, x1 = sig.lsim((Hs.num, denCL), step, TT)
+    t2, y2, x2 = sig.lsim((Hs.num, denCL), ramp, TT)
+    t3, y3, x3 = sig.lsim((Hs.num, denCL), parabola, TT)
+
+    for i in range(NN):
+        errS[i] = step[i] - y1[i]
+        errR[i] = ramp[i] - y2[i]
+        errP[i] = parabola[i] - y3[i]
+    
+    return TT, (step, y1, errS), (ramp, y2, errR), (parabola, y3, errP)
+
+def graph_bode(w, Hmag, Hphase, disable_text = False, save=False, save_bode="bode.png", bode_start = 1, bode_end = 1E3, bode_y_min = -60, bode_y_max = 20, bode_x_ticks = None, phase_y_min = -180, phase_y_max = 180, phase_bode_y_ticks = None, wp=None, pm=None, size=(10,5)):
+    plt.figure(figsize=size)
+    plt.subplot(211)
+    plt.semilogx(w, Hmag, 'k')
+    plt.ylim(bode_y_min,  bode_y_max)
+    plt.xlim(bode_start, bode_end)
+    if bode_x_ticks != None:
+        plt.xticks(bode_x_ticks)
+    plt.ylabel('|H| dB', size=12)
+    if not disable_text and wp != None:
+        plt.text(0.3 + bode_start, -20, '$\\omega$p = {}'.format(round(wp, 1)), fontsize=12)
+    plt.title('Bode Comp')
+    plt.grid(which='both')
+
+    for n in range(100):
+        if Hphase[n] > 0:
+            Hphase[n] = Hphase[n] - 360
+
+    plt.subplot(212)
+    plt.semilogx(w, Hphase, 'k')
+    plt.ylim(phase_y_min, phase_y_max)
+    plt.xlim(bode_start, bode_end)
+    plt.yticks(phase_bode_y_ticks)
+    plt.ylabel('$\\angle$ H (degs)', size=12)
+    plt.xlabel('$\\omega$ (rad/s)')
+    if not disable_text and pm != None:
+        plt.text(0.3 + bode_start, -150, 'pm = {}'.format(round(pm, 0)), fontsize=12)
+    plt.grid(which='both')
+    if save:
+        plt.savefig(save_bode)
+    plt.show()
+    
+def graph_error(TT, eqt, y1, error_eqt, save=False, error_name = "error", save_name = "graph.png", axis = None, error_axis = None, xticks = None, yticks = None, error_xticks = None, error_yticks = None, size=(8,3)):
+        plt.figure(figsize=size)
+        plt.subplot(121)
+        plt.plot(TT, y1, 'k--', label='y1(t)')
+        plt.plot(TT, eqt, 'k', label='u(t)')
+        if axis != None:
+            plt.axis(axis)
+        if xticks != None:
+            plt.xticks(xticks)
+        if yticks != None:
+            plt.yticks(yticks)
+        plt.ylabel(error_name)
+        plt.xlabel('t (sec)')
+        plt.legend()
+        plt.grid()
+
+        plt.subplot(122)
+        plt.plot(TT, error_eqt, 'k', label='error')
+        plt.legend()
+        if error_axis != None:
+            plt.axis(error_axis)
+        if error_xticks != None:
+            plt.xticks(error_xticks)
+        if error_yticks != None:
+            plt.yticks(error_yticks)
+        plt.grid()
+        if save:
+            plt.savefig(save_name)
+        plt.show()
+
+def ds_bode(Hs, save=True, disable_text = False, disable_bode = False, disable_ramp = False, disable_parab = False, disable_step = False, **kargs):
     bode_start =1
-    bode_end = 100
+    bode_end = 1E3
     bode_step = .1
     bode_y_max = 20
     bode_y_min = -60
@@ -139,12 +333,26 @@ def ds_bode(Hs, save=True, disable_text = False, **kargs):
     error_step_axis = None
     error_ramp_axis = None
     error_parab_axis = None
+    step_xticks = None
+    ramp_xticks = None
+    parab_xticks = None
+    error_step_xticks = None
+    error_ramp_xticks = None
+    error_parab_xticks = None
+    step_yticks = None
+    ramp_yticks = None
+    parab_yticks = None
+    error_step_yticks = None
+    error_ramp_yticks = None
+    error_parab_yticks = None
+    step_graph_size = (10,2)
+    ramp_graph_size = (10,2)
+    parab_graph_size = (10,2)
+    bode_graph_size = (10,5)
     save_bode = 'bode.png'
     save_step = 'step.png'
     save_ramp = 'ramp.png'
     save_parab = 'parab.png'
-
-    
     
     for key,arg in kargs.items():
         if 'bode_start' == key:
@@ -191,136 +399,78 @@ def ds_bode(Hs, save=True, disable_text = False, **kargs):
             error_ramp_axis = arg
         if 'error_parab_axis' == key:
             error_parab_axis = arg
+        if 'step_xticks' == key:
+            step_xticks = arg
+        if 'ramp_xticks' == key:
+            ramp_xticks = arg
+        if 'parab_xticks' == key:
+            parab_xticks = arg
+        if 'error_step_xticks' == key:
+            error_step_xticks = arg
+        if 'error_ramp_xticks' == key:
+            error_ramp_xticks = arg
+        if 'error_parab_xticks' == key:
+            error_parab_xticks = arg
+        if 'step_yticks' == key:
+            step_yticks = arg
+        if 'ramp_yticks' == key:
+            ramp_yticks = arg
+        if 'parab_yticks' == key:
+            parab_yticks = arg
+        if 'error_step_yticks' == key:
+            error_step_yticks = arg
+        if 'error_ramp_yticks' == key:
+            error_ramp_yticks = arg
+        if 'error_parab_yticks' == key:
+            error_parab_yticks = arg
+        if 'step_graph_size' == key:
+            step_graph_size = arg
+        if 'ramp_graph_size' == key:
+            ramp_graph_size = arg
+        if 'parab_graph_size' == key:
+            parab_graph_size = arg
+        if 'bode_graph_size' == key:
+            bode_graph_size = arg
+
     
-    w = np.arange(bode_start, bode_end+bode_step, bode_step)
-    system = sig.lti(Hs.num, Hs.den)
-    w, Hmag, Hphase = sig.bode(system, w)
+    w, Hmag, Hphase = make_bode(Hs, bode_start, bode_end, bode_step)
     if not disable_text:
         gm, pm, wg, wp = margin(Hmag, Hphase, w)
+        print(f"gm: {gm}")
+        print(f"wg: {wg}")
     # wp freq for phase margin at gain crossover (gain = 1)
     # pm phase maring
 
-    plt.subplot(211)
-    plt.semilogx(w, Hmag, 'k')
-    plt.ylim(bode_y_min,  bode_y_max)
-    plt.xlim(bode_start, bode_end)
-    if bode_x_ticks != None:
-        plt.xticks(bode_x_ticks)
-    plt.ylabel('|H| dB', size=12)
-    if not disable_text:
-        plt.text(0.3 + bode_start, -20, '$\\omega$p = {}'.format(round(wp, 1)), fontsize=12)
-    plt.title('Bode Comp')
-    plt.grid(which='both')
-
-    for n in range(100):
-        if Hphase[n] > 0:
-            Hphase[n] = Hphase[n] - 360
-
-    plt.subplot(212)
-    plt.semilogx(w, Hphase, 'k')
-    plt.ylim(phase_y_min, phase_y_max)
-    plt.xlim(bode_start, bode_end)
-    plt.yticks(phase_bode_y_ticks)
-    plt.xlabel('$\\omega$ (rad/s)')
-    if not disable_text:
-        plt.text(0.3 + bode_start, -150, 'pm = {}'.format(round(pm, 0)), fontsize=12)
-    plt.grid(which='both')
-    if save:
-        plt.savefig(save_bode)
-    plt.show()
+    if not disable_bode:
+        graph_bode(w, Hmag, Hphase, disable_text, save,
+                    save_bode, bode_start, bode_end,
+                    bode_y_min, bode_y_max, bode_x_ticks,
+                    phase_y_min, phase_y_max, phase_bode_y_ticks, wp, pm, size = bode_graph_size)
 
     # =============================================================================
     # ---- TIME PORTION ----
     # =============================================================================
 
+    TT, (step, y1, errS), (ramp, y2, errR), (parabola, y3, errP) = make_errors(Hs, error_start, error_end, error_dt)
 
-    TT = np.arange(error_start, error_end+error_dt, error_dt)
-    NN = len(TT)
-    step = np.zeros(NN)
-    ramp = np.zeros(NN)
-    parabola = np.zeros(NN)
-    errS = np.zeros(NN)
-    errR = np.zeros(NN)
-    errP = np.zeros(NN)
+    if not disable_step:
+        graph_error(TT,step, y1, errS, save=save, error_name = "step",
+                    save_name=save_step, axis=step_axis, error_axis=error_step_axis,
+                    yticks=step_yticks, xticks=step_xticks, error_xticks=error_step_xticks,
+                    error_yticks=error_step_yticks, size=step_graph_size)
 
-    for i in range(NN):
-        step[i] = 1.0
-        ramp[i] = (error_dt*i)
-        parabola[i] = (error_dt*i)**(2)
+    if not disable_ramp:
+        graph_error(TT,ramp, y2, errR, save=save, error_name = "ramp",
+                    save_name=save_ramp, axis=ramp_axis, error_axis=error_ramp_axis,
+                    yticks=ramp_yticks, xticks=ramp_xticks, error_xticks=error_ramp_xticks,
+                    error_yticks=error_ramp_yticks, size=ramp_graph_size)
 
-    denCL = np.add(Hs.num, Hs.den)
+    if not disable_parab:
+        graph_error(TT,parabola, y3, errP, save=save, error_name = "parabola",
+                    save_name=save_parab, axis=parab_axis, error_axis=error_parab_axis,
+                    yticks=parab_yticks, xticks=parab_xticks, error_xticks=error_parab_xticks,
+                    error_yticks=error_parab_yticks, size=parab_graph_size)
 
-    t1, y1, x1 = sig.lsim((Hs.num, denCL), step, TT)
-    t2, y2, x2 = sig.lsim((Hs.num, denCL), ramp, TT)
-    t3, y3, x3 = sig.lsim((Hs.num, denCL), parabola, TT)
-
-    for i in range(NN):
-        errS[i] = step[i] - y1[i]
-        errR[i] = ramp[i] - y2[i]
-        errP[i] = parabola[i] - y3[i]
-
-    plt.subplot(321)
-    plt.plot(TT, y1, 'k--', label='y1(t)')
-    plt.plot(TT, step, 'k', label='u(t)')
-    if step_axis != None:
-        plt.axis(step_axis)
-    plt.ylabel('step')
-    plt.xlabel('t (sec)')
-    plt.legend()
-    plt.grid()
-
-    plt.subplot(322)
-    plt.plot(TT, errS, 'k', label='error')
-    plt.legend()
-    if error_step_axis != None:
-        plt.axis(error_step_axis)
-    plt.grid()
-    if save:
-        plt.savefig(save_step)
-    plt.show()
-
-    plt.subplot(321)
-    plt.plot(TT, y2, 'k--', label='y2(t)')
-    plt.plot(TT, ramp, 'k', label='r(t)')
-    if ramp_axis != None:
-        plt.axis(ramp_axis)
-    plt.ylabel('ramp')
-    plt.xlabel('t (sec)')
-    plt.legend()
-    plt.grid()
-
-    plt.subplot(322)
-    plt.plot(TT, errR, 'k', label='error')
-    plt.legend(loc=4)
-    plt.xlabel('t (sec)')
-    if error_ramp_axis != None:
-        plt.axis(error_ramp_axis)
- #   plt.yticks([-0.5, 0, 0.3, 0.5])
-    plt.grid()
-    if save:
-        plt.savefig(save_ramp)
-    plt.show()
-
-    plt.subplot(321)
-    plt.plot(TT, y3, 'k--', label='y3(t)')
-    plt.plot(TT, parabola, 'k', label='parab(t)')
-    if parab_axis != None:
-        plt.axis(parab_axis)
-    plt.ylabel('parabola')
-    plt.xlabel('t (sec)')
-    plt.legend()
-    plt.grid()
-
-    plt.subplot(322)
-    plt.plot(TT, errP, 'k', label='error')
-    plt.xlabel('t (sec)')
-    plt.legend()
-    if error_parab_axis != None:
-        plt.axis(error_parab_axis)
-    plt.grid()
-    if save:
-        plt.savefig(save_parab)
-    plt.show()
     
 
 if __name__ == '__main__':
