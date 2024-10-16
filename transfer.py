@@ -171,3 +171,6 @@ def make_bode(Hs,bode_start = 1, bode_stop = 1E3, dt=.1):
     system = sig.lti(Hs.num, Hs.den)
     w, Hmag, Hphase = sig.bode(system, w)
     return w, Hmag, Hphase
+
+def db_to_amp(Hmag):
+    return 10**(0.05*Hmag)
