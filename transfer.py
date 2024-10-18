@@ -39,6 +39,11 @@ class frac:
         for i in range(len(self.num)):
             self.num[i] *= k
         self.k = k
+    
+    def apply_function(self, function):
+        self.num = list(map(function, self.num))
+        self.den = list(map(function, self.den))
+        
     def print(self):
         num_str = ""
         den_str = ""
@@ -166,10 +171,13 @@ def get_margins(Hs,bode_start = 1, bode_stop = 1E3, dt=.1):
     print(f"wp: {wp}")
     return gm, pm, wg, wp
 
-def make_bode(Hs,bode_start = 1, bode_stop = 1E3, dt=.1):
-    w = np.arange(bode_start, bode_stop+dt, dt)
+def make_bode(Hs,bode_start = 1, bode_stop = 1E3, dt=.1, define_w=True):
     system = sig.lti(Hs.num, Hs.den)
-    w, Hmag, Hphase = sig.bode(system, w)
+    if define_w:
+        w = np.arange(bode_start, bode_stop+dt, dt)
+        w, Hmag, Hphase = sig.bode(system, w)
+    else:
+        w, Hmag, Hphase = sig.bode(system)
     return w, Hmag, Hphase
 
 def db_to_amp(Hmag):
