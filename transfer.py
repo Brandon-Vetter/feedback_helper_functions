@@ -36,8 +36,12 @@ class frac:
           
     def set_k(self,k):
         # apply k value to numerator
+        new_num = []
         for i in range(len(self.num)):
-            self.num[i] *= k
+            value_to_set = self.num[i]*k
+            new_num.append(value_to_set)
+            self.num[i] = value_to_set
+        self.num = new_num
         self.k = k
     
     def apply_function(self, function):
