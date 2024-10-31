@@ -13,7 +13,7 @@ def lowpass_filter(n, wc = 1, Debug=False, return_list = False):
     for i in range(itier):
         #print(offset_start + i*(180/n))
         cur_frac = frac([0, 0, wc**2],
-                        [1, 2*np.cos(np.deg2rad(offset_start + i*(180/n)))*wc*1, wc**2])
+                        [1, 2*np.cos(np.deg2rad(90 + offset_start + i*(180/n)))*wc*1, wc**2])
         filt = convolve_equations(filt, cur_frac)
         frac_list.append(cur_frac)
         if Debug:
